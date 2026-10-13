@@ -1,0 +1,61 @@
+Student Name: [Your Name]
+Student ID: [Your Student ID]
+Declared Pathway: Undergraduate
+
+Critical Thinking Reflection
+
+Prompt 1: Failure reconstruction
+
+A failure like “the folder screen is empty after migration” can happen in more than one place. The first possibility is a schema problem: the app may still be reading the old database or the upgrade may not have run, so the new folders and cards tables never existed. In that case, the UI looks empty even though the old Part I table still contains rows. The way to test this is to inspect the database version and query the sqlite_master tables for folders and cards. If those tables are missing, the problem is in the migration layer, not in the UI.
+
+The second possibility is a query problem. Even if the tables exist, the app may be asking for the wrong folder_id, or it may be filtering by a value that is blank or outdated. Then the database still contains valid records, but the screen shows nothing because the read logic is wrong. The distinction is simple: if a direct query by folder_id still returns rows, the data is there and the UI filter is the issue. If the direct query returns zero rows, the migration or the insert logic is the issue.
+
+The safest next step is to check the data at the boundary where it fails: query the database directly before changing anything else. In my app, the migration logic and unit tests show the schema upgrade path is valid, which means an empty screen is more likely to be a wrong filter or stale refresh than a missing table. The important lesson is that the data layer must be checked before any destructive action or reseeding.
+
+Prompt 2: Delete policy trade-off
+
+My app uses ON DELETE CASCADE because a folder and its cards are treated as one logical unit. If the folder is removed, the cards inside it are also removed. This is reasonable for a card catalogue because the child records belong to the parent folder and do not make sense on their own.
+
+However, cascade is not always the right choice. In a system like a library archive, medical records, or legal documents, deleting a folder may need to preserve important child records for auditing or history. In those cases, a safer policy could be RESTRICT or SET NULL, so the system prevents accidental destruction or converts the relationship to a safer state. A business rule like this may be more appropriate when the data needs to remain even if the folder is deleted.
+
+The UI safeguard is a confirmation dialog that names the exact folder and shows how many cards will be deleted. This makes the action explicit and prevents accidental loss. In the app, the delete test confirms the cascade behavior: deleting a folder removes the child cards under that folder while leaving unrelated records alone. This makes the rule visible and easy to reason about.
+
+Prompt 3: Image forensics
+
+An image stored in SQLite is only a reference, not the actual picture. The app should never treat a stored path or URL as proof that the image is available. In this project, the image_ref field is nullable, and when it is missing or invalid, the UI shows a suit-symbol placeholder instead of breaking the card. This makes the record still usable even when there is no art to display.
+
+There are a few different cases to separate. A bundled asset may be missing from pubspec.yaml or not exist in the project. An app-private file may have been deleted after the path was saved. A remote URL may still be in the database but fail if the network is offline. A malformed string may not be a valid asset path or URL at all. Each of these produces a different failure mode, but the correct response in all of them is the same: keep the card record, keep the text, and show a safe fallback.
+
+This matters because a working database query can prove that the reference was saved, but it cannot prove the image is available. The app should preserve the card’s identity while showing a placeholder where the image cannot load. That is why the fallback symbol is a safe and clear design choice.
+
+AI Alchemist’s Lab
+
+U2 / The haunted empty folder
+
+Claim: “An empty list proves the database lost its records.”
+
+Prediction: I expect this claim to be false because an empty screen can be caused by a wrong filter, a failed read, or a genuinely empty folder. Empty UI alone does not prove database loss.
+
+Investigation: The safe way to check is to query the database directly by folder_id and compare the database result to the screen result. If the database still has rows but the screen is empty, the issue is in the filter or list refresh. If the database also has zero rows, then the data is actually missing or the wrong folder was targeted.
+
+Challenge: The evidence only supports what it directly shows. An empty list proves only that the current screen has no visible items, not necessarily that the database lost records. A stale list or wrong query can cause the same outcome.
+
+Recast: A safer design is to show a real empty-state message only after confirming the database query returned zero rows for that folder. This prevents the user from thinking the database is broken when the real issue is a bad filter or stale state.
+
+U3 / The vanishing artwork spell
+
+Claim: “Saving an image URL makes the picture available offline.”
+
+Prediction: I expect this claim to be false. A saved URL is only a reference; the image itself is not stored locally unless the app downloads or bundles it.
+
+Investigation: The important evidence is that the app stores image_ref but still renders a suit-symbol placeholder when the reference is missing, invalid, or fails to load. This proves the image is not treated as required data. It also shows that the card survives even when the image cannot be fetched.
+
+Challenge: A valid URL string in the database does not mean the artwork is available offline. The network may fail, the remote resource may be removed, or the app may never have fetched the image. The reference is not the same thing as a local copy.
+
+Recast: A safer design is to keep the image_ref nullable and always provide a fallback symbol. If offline access is important, store a bundled asset or local file and keep the URL only as an optional remote source. That preserves the card identity without depending on the network.
+
+No AI service used; evaluated the supplied claim.
+
+
+Important note:
+This is a Word-compatible document. Open it in Word and save it as a .docx, then export or print to PDF.
